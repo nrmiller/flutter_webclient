@@ -35,7 +35,7 @@ class _WebviewPageState extends State<WebviewPage> {
 
               // Show the text of the web page.
               //
-              return SingleChildScrollView(child: Html(data: snapshot.data!.body));
+              return SingleChildScrollView(child: Text(snapshot.data!.body));
             }
             else {
 
