@@ -24,19 +24,19 @@ static int reset_handler(request_rec* r);
 /// @brief Parses the POSTed JSON data from the request body, storing the result in the provided setValue parameter.
 /// @param r the request_rec containing the request body.
 /// @param setValue the location to store the setValue.
-/// @return 
+/// @return True if the body could be parsed, otherwise, false.
 static bool parseJSONBody(request_rec* r, int& setValue);
 
-/// @brief Parses the POSTed form data from the reqest body, storing the data in the provided map.
+/// @brief Parses the POSTed form data from the reqest body, storing the result in the provided setValue parameter.
 /// @param r the request_rec containing the request body.
-/// @param map the map.
+/// @param setValue the location to store the setValue.
 /// @return True if the body could be parsed, otherwise, false.
-static bool parseFormBody(request_rec* r, std::map<std::string, std::string>& map);
+static bool parseFormBody(request_rec* r, int& setValue);
 
 /// @brief Checks if there is a matching request header with the provided key and value.
 /// @param key the key of the request header to look for.
 /// @param value the value of the request header to match.
-/// @return true if the key/value pair is found in the request headers, otherwise false.
+/// @return True if the key/value pair is found in the request headers, otherwise false.
 static bool hasRequestHeader(const request_rec* r, std::string key, std::string value);
 
 /// @brief Checks if there is a matching request header with the provided key and returns the associated value.
@@ -98,47 +98,38 @@ static int hello_handler(request_rec* r)
     if (strcmp(r->method, "POST") == 0)
     {
         if (hasRequestHeader(r, "Content-Type", "application/x-www-form-urlencoded")) {
-
-            // This is a post request, get the form data from the body.
-            //
-            std::map<std::string, std::string> map { };
-            if (!parseFormBody(r, map))
+            // If we are using an HTML form (e.g. with a submit button), data will come as a form request body.
+            int setValue;
+            if (!parseFormBody(r, setValue)) {
                 return HTTP_BAD_REQUEST;
-
-            if (map.contains("setValue")) {
-                std::string strCounter = map["setValue"];
-                
-                try {
-                    int counter = std::stoi(strCounter);
-                    ap_rputs(setCounter(counter).c_str(), r);
-                    return OK;
-                }
-                catch (...) {
-                    return HTTP_BAD_REQUEST;
-                }
             }
-            else {
-                ap_rputs(setCounter(counter).c_str(), r);
-                return OK;
-            }
+            
+            std::string response = setCounter(setValue);
+            ap_rputs(response.c_str(), r);
+            return OK;
         }
         else if (hasRequestHeader(r, "Content-Type", "application/json")) {
-            int result;
-            if (!parseJSONBody(r, result)) {
+            // For a traditional RESTful architecture, we can use a POST request with a JSON request body.
+            // This way, the front-end does not need to use HTML forms.
+            int setValue;
+            if (!parseJSONBody(r, setValue)) {
                 return HTTP_BAD_REQUEST;
             }
 
-            ap_rputs(setCounter(result).c_str(), r);
+            std::string response = setCounter(setValue);
+            ap_rputs(response.c_str(), r);
             return OK;
         }
     }
     else if (strcmp(r->method , "GET") == 0)
     {
-        // This is a  GET request, get the form data from the query string.
-        std::map<std::string, std::string> map { };
-        parseQueryString(r->args, map);
+        // We can use the following function to check any query string parameters.
+        //
+        // std::map<std::string, std::string> map { };
+        // parseQueryString(r->args, map);
 
-        ap_rputs(helloWorld().c_str(), r);
+        std::string response = helloWorld();
+        ap_rputs(response.c_str(), r);
         return OK;
     }
 
@@ -149,8 +140,14 @@ static int reset_handler(request_rec* r)
 {
     if (!r->handler || strcmp(r->handler, "reset-handler")) return DECLINED; // Not processed by this handler.
 
+    if (strcmp(r->method, "POST") != 0)
+    {
+        return HTTP_BAD_REQUEST; // Only POST is supported for /reset endpoint.
+    }
+
     ap_set_content_type(r, "text/html");
-    ap_rputs(resetCounter().c_str(), r);
+    std::string repsonse = resetCounter();
+    ap_rputs(repsonse.c_str(), r);
 
     return OK;
 }
@@ -162,7 +159,7 @@ static std::string setCounter(int n) {
 
 static std::string resetCounter() {
     counter = 0;
-    return std::format("<html><p>Hello World! Counter: {}</p></html>", counter);
+    return { std::format("<html><p>Hello World! Counter: {}</p></html>", counter) };
 }
 
 static std::string helloWorld() {
@@ -172,6 +169,7 @@ static std::string helloWorld() {
     sstream << "<html>";
     sstream << std::format("<p>Hello World! Counter: {}</p>", counter);
 
+    // Below we output forms that can be used to make the set/reset requests.
     sstream << R"(
         <form action="hello">
             <input type="number" name="setValue"><button type="submit" formmethod="post">Set</button><br><br>
@@ -244,7 +242,7 @@ static bool parseJSONBody(request_rec* r, int& setValue) {
     return true;
 }
 
-static bool parseFormBody(request_rec* r, std::map<std::string, std::string>& map) {
+static bool parseFormBody(request_rec* r, int& setValue) {
 
     apr_array_header_t* postData;
     if (ap_parse_form_data(r, NULL, &postData, -1, HUGE_STRING_LEN) != OK || !postData)
@@ -254,6 +252,7 @@ static bool parseFormBody(request_rec* r, std::map<std::string, std::string>& ma
     apr_off_t len;
     apr_size_t size;
     char* buffer;
+    std::map<std::string, std::string> map { };
 
     while (postData && !apr_is_empty_array(postData)) {
         ap_form_pair_t* pair = static_cast<ap_form_pair_t*>(apr_array_pop(postData));
@@ -264,7 +263,18 @@ static bool parseFormBody(request_rec* r, std::map<std::string, std::string>& ma
         buffer[len] = 0;
 
         map[apr_pstrdup(r->pool, pair->name)] = buffer;
+    }
 
+    if (!map.contains("setValue")) {
+        return false;
+    }
+
+    std::string strSetValue = map["setValue"];    
+    try {
+        setValue = std::stoi(strSetValue);
+    }
+    catch (...) {
+        return false; // Form body is malformed.
     }
 
     return true;
