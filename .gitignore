@@ -139,3 +139,7 @@ app.*.symbols
 *.o
 
 *.so
+
+
+*.crt
+*.pem
