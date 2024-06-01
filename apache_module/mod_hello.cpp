@@ -36,8 +36,9 @@ static bool parseFormBody(request_rec* r, int& setValue);
 /// @brief Checks if there is a matching request header with the provided key and value.
 /// @param key the key of the request header to look for.
 /// @param value the value of the request header to match.
+/// @param startsWidth if true, ignores matching against additional characters not found in the provided value.
 /// @return True if the key/value pair is found in the request headers, otherwise false.
-static bool hasRequestHeader(const request_rec* r, std::string key, std::string value);
+static bool hasRequestHeader(const request_rec* r, std::string key, std::string value, bool startsWith = false);
 
 /// @brief Checks if there is a matching request header with the provided key and returns the associated value.
 /// @param key the key of the request header to look for.
@@ -97,7 +98,7 @@ static int hello_handler(request_rec* r)
 
     if (strcmp(r->method, "POST") == 0)
     {
-        if (hasRequestHeader(r, "Content-Type", "application/x-www-form-urlencoded")) {
+        if (hasRequestHeader(r, "Content-Type", "application/x-www-form-urlencoded", true)) {
             // If we are using an HTML form (e.g. with a submit button), data will come as a form request body.
             int setValue;
             if (!parseFormBody(r, setValue)) {
@@ -108,9 +109,12 @@ static int hello_handler(request_rec* r)
             ap_rputs(response.c_str(), r);
             return OK;
         }
-        else if (hasRequestHeader(r, "Content-Type", "application/json")) {
+        else if (hasRequestHeader(r, "Content-Type", "application/json", true) ||
+                 hasRequestHeader(r, "Content-Type", "text/plain", true)) {
             // For a traditional RESTful architecture, we can use a POST request with a JSON request body.
             // This way, the front-end does not need to use HTML forms.
+            // Note: Due to CORS failing preflight checks for application/json (an unsupported content-type), we also attempt
+            // to handle text/plain as if it were JSON. This is not perfect, but might be suitable depending on the deployment.
             int setValue;
             if (!parseJSONBody(r, setValue)) {
                 return HTTP_BAD_REQUEST;
@@ -280,17 +284,42 @@ static bool parseFormBody(request_rec* r, int& setValue) {
     return true;
 }
 
-static bool hasRequestHeader(const request_rec* r, std::string key, std::string value)
+static bool icompare(const std::string_view& s1, const std::string_view& s2)
+{
+    if (s1.length() != s2.length())
+        return false;
+
+    for (size_t index = 0; index < s1.length(); index++) {
+        if (std::tolower(static_cast<unsigned char>(s1[index])) != std::tolower(static_cast<unsigned char>(s2[index])))
+            return false;
+    }
+    return true;
+}
+
+static bool hasRequestHeader(const request_rec* r, std::string key, std::string value, bool startsWith)
 {
     const apr_array_header_t* headersTable = apr_table_elts(r->headers_in);
     apr_table_entry_t* headers = (apr_table_entry_t*)headersTable->elts;
 
     for (int i = 0; i < headersTable->nelts; i++) {
-        if (key.compare(headers[i].key) == 0) {
+
+        std::string headerValue { headers[i].val }; 
+        if (startsWith) {
+            // Short of writing a full method to check the content type which sometimes omits the charset,
+            // we can just check if the value begins with the same set of characters.
+            // It would be better to implement a new function for specifically handling edge cases concerning
+            // the content type.
+            headerValue = headerValue.substr(0, std::min(value.length(), headerValue.length()));
+        }
+
+
+        // Header keys are case insensitive
+        if (icompare(key, headers[i].key)) {
             // Found the desired key, check the value for a match.
-            return (value.compare(headers[i].val) == 0);
+            return (value.compare(headerValue) == 0);
         }
     }
+
     return false;
 }
 
