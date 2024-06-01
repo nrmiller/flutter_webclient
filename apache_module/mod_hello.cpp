@@ -33,6 +33,12 @@ static bool parseJSONBody(request_rec* r, int& setValue);
 /// @return True if the body could be parsed, otherwise, false.
 static bool parseFormBody(request_rec* r, int& setValue);
 
+/// @brief Performs a case-insensitive compare between two strings.
+/// @param s1 the first string.
+/// @param s2 the second string.
+/// @return True, if the strings are equal, disregarding case, otherwise, false.
+static bool icompare(const std::string_view& s1, const std::string_view& s2);
+
 /// @brief Checks if there is a matching request header with the provided key and value.
 /// @param key the key of the request header to look for.
 /// @param value the value of the request header to match.
@@ -289,6 +295,8 @@ static bool icompare(const std::string_view& s1, const std::string_view& s2)
     if (s1.length() != s2.length())
         return false;
 
+    // Perform a case insensitive check by converting both strings to the same case (e.g. lower)
+    //
     for (size_t index = 0; index < s1.length(); index++) {
         if (std::tolower(static_cast<unsigned char>(s1[index])) != std::tolower(static_cast<unsigned char>(s2[index])))
             return false;
