@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
@@ -14,8 +17,20 @@ class WebviewPage extends StatefulWidget {
 }
 
 class _WebviewPageState extends State<WebviewPage> {
-
-  var url = Uri.http('192.168.1.100', '/hello');
+  //
+  // Future<String> post(String url, Map jsonMap) async {
+  //   HttpClient httpClient = new HttpClient();
+  //   HttpClientRequest request = await httpClient.postUrl(Uri.parse(url));
+  //   request.headers.set('Content-Type', 'application/json');
+  //   request.add(utf8.encode(json.encode(jsonMap)));
+  //
+  //   HttpClientResponse response = await request.close();
+  //   // todo - you should check the response.statusCode
+  //
+  //   String reply = await response.transform(utf8.decoder).join();
+  //   httpClient.close();
+  //   return reply;
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +44,19 @@ class _WebviewPageState extends State<WebviewPage> {
         // Later we may want to use a state management framework such as BLoC.
         //
         child: FutureBuilder<Response>(
-          future: http.post(url),
+          // future: http.get(Uri.https('nicholas-VirtualBox.localdomain', '/hello')),
+          // future: http.post(Uri.https('nicholas-VirtualBox.localdomain', '/reset')),
+          // future: http.post(Uri.https('nicholas-VirtualBox.localdomain', '/hello'), // application/x-www-form-urlencoded
+          //     body: <String, String>{ 'setValue': '333' }
+          // ),
+          future: http.post(Uri.https('nicholas-VirtualBox.localdomain', '/hello'),
+              headers: {
+                'Content-Type': 'text/plain',
+              },
+              body: jsonEncode({
+                'setValue': '777',
+              })
+            ),
           builder: (BuildContext context, AsyncSnapshot<Response> snapshot) {
             if (snapshot.hasData) {
 
